@@ -1,45 +1,81 @@
 import mongoose from 'mongoose'
-
 import { MongoMemoryServer } from 'mongodb-memory-server'
 
+/**
+ * Global is used here to maintain a cached connection across hot reloads
+ * in development and across function invocations in serverless environments.
+ */
+let cached = global.mongoose
+
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null }
+}
+
 export const connectDB = async () => {
-  try {
-    const uri = process.env.MONGODB_URI
-    
-    if (!uri) {
-      throw new Error('MONGODB_URI is not defined in environment variables')
+  const uri = process.env.MONGODB_URI
+
+  if (!uri && process.env.NODE_ENV === 'production') {
+    throw new Error('MONGODB_URI is not defined in environment variables')
+  }
+
+  if (cached.conn) {
+    return cached.conn
+  }
+
+  if (!cached.promise) {
+    const opts = {
+      serverSelectionTimeoutMS: 5000,
+      bufferCommands: true, // Set to true to avoid issues with models being used before connection
     }
 
-    console.log('Connecting to MongoDB...')
-    const conn = await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 5000
-    })
-    console.log(`MongoDB Connected: ${conn.connection.host}`)
-    return uri
-  } catch (error) {
-    console.error(`MongoDB Connection Error: ${error.message}`)
-    
-    // Only try fallback in development
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('Attempting to start local in-memory MongoDB fallback...')
-      try {
-        const mongod = await MongoMemoryServer.create({
-          binary: {
-            version: '6.0.1', // Specify a version to potentially help with resolution
+    if (uri) {
+      console.log('Connecting to MongoDB...')
+      cached.promise = mongoose.connect(uri, opts).then((mongoose) => {
+        console.log(`MongoDB Connected: ${mongoose.connection.host}`)
+        return mongoose
+      }).catch(async (error) => {
+        console.error(`MongoDB Connection Error: ${error.message}`)
+        
+        // Only try fallback in development
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('Attempting to start local in-memory MongoDB fallback...')
+          try {
+            const mongod = await MongoMemoryServer.create({
+              binary: {
+                version: '6.0.1',
+              }
+            })
+            const memoryUri = mongod.getUri()
+            return mongoose.connect(memoryUri)
+          } catch (memError) {
+            console.error(`Critical: Memory Server fallback failed: ${memError.message}`)
+            process.exit(1)
           }
-        })
-        const uri = mongod.getUri()
-        const conn = await mongoose.connect(uri)
-        console.log(`MongoDB Connected (In-Memory): ${conn.connection.host}`)
-        return uri
-      } catch (memError) {
-        console.error(`Critical: Memory Server fallback failed: ${memError.message}`)
-        console.error('Please ensure you have a local MongoDB instance running or a valid MONGODB_URI in your .env file.')
-        process.exit(1)
-      }
+        } else {
+          throw error
+        }
+      })
     } else {
-      console.error('Production environment: Database connection is required.')
-      process.exit(1)
+      // Fallback for development if URI is missing
+      console.warn('MONGODB_URI missing. Starting local in-memory MongoDB fallback...')
+      cached.promise = MongoMemoryServer.create({
+        binary: { version: '6.0.1' }
+      }).then(mongod => {
+        const memoryUri = mongod.getUri()
+        return mongoose.connect(memoryUri)
+      }).then(conn => {
+        console.log(`MongoDB Connected (In-Memory): ${conn.connection.host}`)
+        return conn
+      })
     }
   }
+
+  try {
+    cached.conn = await cached.promise
+  } catch (e) {
+    cached.promise = null
+    throw e
+  }
+
+  return cached.conn
 }

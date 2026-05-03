@@ -156,5 +156,6 @@ export const getRecalledBatches = asyncHandler(async (req, res) => {
   return res.json(new ApiResponse(200, batches, 'Recalled batches fetched'))
 })
 
-// Initialize the interval refresh
-setInterval(loadBatchMap, MAP_TTL)
+// Initialize the interval refresh - REMOVED for serverless compatibility
+// This is now handled in server.js only in non-serverless environments
+// setInterval(loadBatchMap, MAP_TTL)

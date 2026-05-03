@@ -34,6 +34,20 @@ app.use(morgan('dev'))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
+// Database connection middleware for serverless
+app.use(async (req, res, next) => {
+  try {
+    await connectDB()
+    next()
+  } catch (error) {
+    console.error('Database connection failed:', error.message)
+    res.status(503).json({ 
+      success: false, 
+      message: 'Database connection temporarily unavailable. Please try again in a few seconds.' 
+    })
+  }
+})
+
 // Routes
 app.use('/api/v1/auth', authRoutes)
 app.use('/api/v1/scan', scanRoutes)
@@ -58,26 +72,30 @@ app.get('/', (req, res) => {
 app.use(notFound)
 app.use(errorHandler)
 
-const PORT = process.env.PORT || 5000
 
 import { runSeed } from './utils/seedData.js'
 
-connectDB().catch(err => {
-  console.error("Failed to connect to DB", err)
-})
+const PORT = process.env.PORT || 5000
 
 // Only run the server manually and execute background jobs if NOT in a serverless production environment
 if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-  app.listen(PORT, async () => {
-    console.log(`MediGuard server running on port ${PORT}`)
-    try {
-      console.log('Running automatic seeding for initial data...')
-      await runSeed()
-      await loadBatchMap()
-      startAllJobs()
-    } catch (err) {
-      console.error("Startup script error:", err)
-    }
+  connectDB().then(async () => {
+    app.listen(PORT, async () => {
+      console.log(`MediGuard server running on port ${PORT}`)
+      try {
+        console.log('Running automatic seeding for initial data...')
+        await runSeed()
+        await loadBatchMap()
+        startAllJobs()
+        
+        // Refresh batch map every 30 minutes locally
+        setInterval(loadBatchMap, 30 * 60 * 1000)
+      } catch (err) {
+        console.error("Startup script error:", err)
+      }
+    })
+  }).catch(err => {
+    console.error("Failed to connect to DB during startup", err)
   })
 }
 
