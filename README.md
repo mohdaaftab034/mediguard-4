@@ -9,6 +9,12 @@
 
 ---
 
+## 🎥 Pitch Video
+
+![Pitch Video](./pitchv-video_WRLaHVON.mp4)
+
+---
+
 ## ✨ Core Pillars
 
 ### 👁️ Neural Vision Inspection
