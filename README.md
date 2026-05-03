@@ -10,8 +10,7 @@
 ---
 
 ## 🎥 Pitch Video
-
-![Pitch Video](./pitchv-video_WRLaHVON.mp4)
+Demo Video: https://drive.google.com/open?id=1LvXlxNeVV8cJA5jwiEftgh-SNSXgrthK&authuser=2&t=5.68
 
 ---
 
